@@ -5,33 +5,50 @@ import fetch from "node-fetch";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// App Store Shared Secret (Render ortam değişkeni olarak ekleyebilirsin)
 const APPLE_SHARED_SECRET = process.env.APPLE_SHARED_SECRET;
 
 app.use(bodyParser.json());
 
+const APPLE_PRODUCTION_URL = "https://buy.itunes.apple.com/verifyReceipt";
+const APPLE_SANDBOX_URL = "https://sandbox.itunes.apple.com/verifyReceipt";
+
 app.post("/verify-receipt", async (req, res) => {
-  const { "receipt-data": receiptData } = req.body;
+  const receiptData = req.body["receipt-data"];
   if (!receiptData) {
     return res.status(400).json({ error: "Receipt data is required" });
   }
 
   try {
-    const response = await fetch("https://buy.itunes.apple.com/verifyReceipt", {
+    // Önce production’a gönderiyoruz
+    let response = await fetch(APPLE_PRODUCTION_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         "receipt-data": receiptData,
-        "password": APPLE_SHARED_SECRET,
-        "exclude-old-transactions": true
+        password: APPLE_SHARED_SECRET,
+        "exclude-old-transactions": true,
       }),
     });
 
-    const data = await response.json();
+    let data = await response.json();
 
-    const isSubscribed = data?.latest_receipt_info?.some(item => {
-      const now = Date.now() / 1000;
-      return now < Number(item.expires_date_ms) / 1000;
+    // Eğer 21007 hatası dönerse → sandbox endpoint’e tekrar dene
+    if (data.status === 21007) {
+      response = await fetch(APPLE_SANDBOX_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          "receipt-data": receiptData,
+          password: APPLE_SHARED_SECRET,
+          "exclude-old-transactions": true,
+        }),
+      });
+      data = await response.json();
+    }
+
+    const isSubscribed = data?.latest_receipt_info?.some((item) => {
+      const now = Date.now();
+      return now < Number(item.expires_date_ms);
     });
 
     res.json({ isSubscribed: !!isSubscribed, raw: data });
@@ -41,5 +58,5 @@ app.post("/verify-receipt", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`🚀 Server listening on port ${PORT}`);
 });
