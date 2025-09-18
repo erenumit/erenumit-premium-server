@@ -32,7 +32,7 @@ app.post("/verify-receipt", async (req, res) => {
   console.log("📥 Receipt data alındı");
 
   try {
-    // Önce production endpoint
+    // Production endpoint
     let response = await fetch(APPLE_PRODUCTION_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -64,8 +64,8 @@ app.post("/verify-receipt", async (req, res) => {
 
     // Abonelik durumu kontrolü
     const latestExpirationDateMs = data?.latest_receipt_info?.reduce((maxDate, item) => {
-      const expiresDate = Number(item.expires_date_ms || item.expiresDateMs || 0);
-      return expiresDate > maxDate ? expiresDate : maxDate;
+      const expiresMs = Number(item.expires_date_ms || 0);
+      return expiresMs > maxDate ? expiresMs : maxDate;
     }, 0);
 
     const isSubscribed = latestExpirationDateMs ? Date.now() < latestExpirationDateMs : false;
