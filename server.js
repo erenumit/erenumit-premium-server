@@ -32,6 +32,7 @@ app.post("/verify-receipt", async (req, res) => {
   console.log("📥 Receipt data alındı");
 
   try {
+    // Önce production endpoint
     let response = await fetch(APPLE_PRODUCTION_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -45,6 +46,7 @@ app.post("/verify-receipt", async (req, res) => {
     let data = await response.json();
     console.log("📦 Production yanıt:", data);
 
+    // Eğer sandbox verisi gerekiyorsa 21007 hatası ile gelir
     if (data.status === 21007) {
       console.log("🔄 Sandbox testi gerekiyor, sandbox endpoint’e yönlendiriliyor");
       response = await fetch(APPLE_SANDBOX_URL, {
@@ -60,8 +62,9 @@ app.post("/verify-receipt", async (req, res) => {
       console.log("📦 Sandbox yanıt:", data);
     }
 
+    // Abonelik durumu kontrolü
     const latestExpirationDateMs = data?.latest_receipt_info?.reduce((maxDate, item) => {
-      const expiresDate = Number(item.expires_date_ms);
+      const expiresDate = Number(item.expires_date_ms || item.expiresDateMs || 0);
       return expiresDate > maxDate ? expiresDate : maxDate;
     }, 0);
 
