@@ -46,10 +46,9 @@ app.post("/verify-receipt", async (req, res) => {
     let data = await response.json();
     console.log("📦 Production yanıt:", data);
 
-    // Eğer sandbox verisi gerekiyorsa 21007 hatası ile gelir
-    // Bu hatayı aldıktan sonra sandbox endpoint’e yönlendirilir
-    if (data.status === 21007) {
-      console.log("🔄 Sandbox testi gerekiyor, sandbox endpoint’e yönlendiriliyor");
+    // ➡️ Düzeltme: Eğer ilk deneme başarılı değilse (status 0 değilse) Sandbox'a yönlendir.
+    if (data.status !== 0) {
+      console.log("🔄 Canlı ortamda hata alındı, sandbox endpoint’e yönlendiriliyor");
       response = await fetch(APPLE_SANDBOX_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -72,13 +71,9 @@ app.post("/verify-receipt", async (req, res) => {
     const isSubscribed = latestExpirationDateMs ? Date.now() < latestExpirationDateMs : false;
 
     console.log(`✅ Abonelik durumu: ${isSubscribed}`);
-
-    // Başarılı doğrulama (status 0) veya zaten hata varsa, yanıtı gönder
-    if (data.status === 0 || data.status === 21002) {
-      res.json({ isSubscribed: !!isSubscribed, raw: data });
-    } else {
-      res.status(500).json({ isSubscribed: false, raw: data, error: "Doğrulama başarısız oldu" });
-    }
+    
+    // Flutter'a nihai yanıtı gönder
+    res.json({ isSubscribed: !!isSubscribed, raw: data });
 
   } catch (error) {
     console.error("❌ Doğrulama hatası:", error);
