@@ -32,7 +32,7 @@ app.post("/verify-receipt", async (req, res) => {
   console.log("📥 Receipt data alındı");
 
   try {
-    // Production endpoint
+    // İlk olarak Production endpoint'ini dene
     let response = await fetch(APPLE_PRODUCTION_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -47,6 +47,7 @@ app.post("/verify-receipt", async (req, res) => {
     console.log("📦 Production yanıt:", data);
 
     // Eğer sandbox verisi gerekiyorsa 21007 hatası ile gelir
+    // Bu hatayı aldıktan sonra sandbox endpoint’e yönlendirilir
     if (data.status === 21007) {
       console.log("🔄 Sandbox testi gerekiyor, sandbox endpoint’e yönlendiriliyor");
       response = await fetch(APPLE_SANDBOX_URL, {
@@ -71,10 +72,17 @@ app.post("/verify-receipt", async (req, res) => {
     const isSubscribed = latestExpirationDateMs ? Date.now() < latestExpirationDateMs : false;
 
     console.log(`✅ Abonelik durumu: ${isSubscribed}`);
-    res.json({ isSubscribed: !!isSubscribed, raw: data });
+
+    // Başarılı doğrulama (status 0) veya zaten hata varsa, yanıtı gönder
+    if (data.status === 0 || data.status === 21002) {
+      res.json({ isSubscribed: !!isSubscribed, raw: data });
+    } else {
+      res.status(500).json({ isSubscribed: false, raw: data, error: "Doğrulama başarısız oldu" });
+    }
+
   } catch (error) {
     console.error("❌ Doğrulama hatası:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ isSubscribed: false, error: error.message });
   }
 });
 
