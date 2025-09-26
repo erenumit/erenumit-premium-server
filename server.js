@@ -22,6 +22,20 @@ app.use(bodyParser.json());
 const APPLE_PRODUCTION_URL = "https://buy.itunes.apple.com/verifyReceipt";
 const APPLE_SANDBOX_URL = "https://sandbox.itunes.apple.com/verifyReceipt";
 
+// Yardımcı fonksiyon
+async function validateReceipt(url, receiptData) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      "receipt-data": receiptData,
+      password: APPLE_SHARED_SECRET,
+      "exclude-old-transactions": true,
+    }),
+  });
+  return response.json();
+}
+
 app.post("/verify-receipt", async (req, res) => {
   const receiptData = req.body["receipt-data"];
   if (!receiptData) {
@@ -32,34 +46,24 @@ app.post("/verify-receipt", async (req, res) => {
   console.log("📥 Receipt data alındı");
 
   try {
-    // İlk olarak Production endpoint'ini dene
-    let response = await fetch(APPLE_PRODUCTION_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        "receipt-data": receiptData,
-        password: APPLE_SHARED_SECRET,
-        "exclude-old-transactions": true,
-      }),
-    });
-
-    let data = await response.json();
+    // İlk deneme → Production
+    let data = await validateReceipt(APPLE_PRODUCTION_URL, receiptData);
     console.log("📦 Production yanıt:", data);
 
-    // ➡️ Düzeltme: Eğer ilk deneme başarılı değilse (status 0 değilse) Sandbox'a yönlendir.
-    if (data.status !== 0) {
-      console.log("🔄 Canlı ortamda hata alındı, sandbox endpoint’e yönlendiriliyor");
-      response = await fetch(APPLE_SANDBOX_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          "receipt-data": receiptData,
-          password: APPLE_SHARED_SECRET,
-          "exclude-old-transactions": true,
-        }),
-      });
-      data = await response.json();
+    // Apple özel hata kodları
+    if (data.status === 21007) {
+      console.log("🔄 Bu makbuz sandbox ortamına ait, sandbox endpoint’e yönlendiriliyor");
+      data = await validateReceipt(APPLE_SANDBOX_URL, receiptData);
       console.log("📦 Sandbox yanıt:", data);
+    } else if (data.status === 21008) {
+      console.log("🔄 Bu makbuz production ortamına ait, production endpoint’te tekrar deneniyor");
+      data = await validateReceipt(APPLE_PRODUCTION_URL, receiptData);
+      console.log("📦 Production tekrar yanıt:", data);
+    }
+
+    if (data.status !== 0) {
+      console.error("❌ Geçersiz makbuz:", data.status);
+      return res.status(400).json({ isSubscribed: false, raw: data });
     }
 
     // Abonelik durumu kontrolü
@@ -71,9 +75,9 @@ app.post("/verify-receipt", async (req, res) => {
     const isSubscribed = latestExpirationDateMs ? Date.now() < latestExpirationDateMs : false;
 
     console.log(`✅ Abonelik durumu: ${isSubscribed}`);
-    
-    // Flutter'a nihai yanıtı gönder
-    res.json({ isSubscribed: !!isSubscribed, raw: data });
+
+    // Nihai yanıt
+    res.json({ isSubscribed, raw: data });
 
   } catch (error) {
     console.error("❌ Doğrulama hatası:", error);
