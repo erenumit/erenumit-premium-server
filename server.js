@@ -22,7 +22,7 @@ app.use(bodyParser.json());
 const APPLE_PRODUCTION_URL = "https://buy.itunes.apple.com/verifyReceipt";
 const APPLE_SANDBOX_URL = "https://sandbox.itunes.apple.com/verifyReceipt";
 
-// Yardımcı fonksiyon
+// Yardımcı fonksiyon: Receipt doğrulama
 async function validateReceipt(url, receiptData) {
   const response = await fetch(url, {
     method: "POST",
@@ -46,21 +46,25 @@ app.post("/verify-receipt", async (req, res) => {
   console.log("📥 Receipt data alındı");
 
   try {
-    // İlk deneme → Production
+    // İlk deneme: Production endpoint
     let data = await validateReceipt(APPLE_PRODUCTION_URL, receiptData);
     console.log("📦 Production yanıt:", data);
 
-    // Apple özel hata kodları
+    // Eğer makbuz sandbox ise 21007 → sandbox endpoint’e yönlendir
     if (data.status === 21007) {
-      console.log("🔄 Bu makbuz sandbox ortamına ait, sandbox endpoint’e yönlendiriliyor");
+      console.log("🔄 Sandbox makbuzu, sandbox endpoint’e yönlendiriliyor");
       data = await validateReceipt(APPLE_SANDBOX_URL, receiptData);
       console.log("📦 Sandbox yanıt:", data);
-    } else if (data.status === 21008) {
-      console.log("🔄 Bu makbuz production ortamına ait, production endpoint’te tekrar deneniyor");
+    }
+
+    // Eğer makbuz production ortamına ait ama yanlışsa 21008 → production tekrar dene
+    else if (data.status === 21008) {
+      console.log("🔄 Production makbuzu, production endpoint’te tekrar deneniyor");
       data = await validateReceipt(APPLE_PRODUCTION_URL, receiptData);
       console.log("📦 Production tekrar yanıt:", data);
     }
 
+    // Status 0 değilse geçersiz makbuz
     if (data.status !== 0) {
       console.error("❌ Geçersiz makbuz:", data.status);
       return res.status(400).json({ isSubscribed: false, raw: data });
