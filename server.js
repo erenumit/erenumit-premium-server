@@ -33,9 +33,12 @@ async function validateReceipt(url, receiptData) {
       "exclude-old-transactions": true,
     }),
   });
-  return response.json();
+
+  const data = await response.json();
+  return data;
 }
 
+// Endpoint: /verify-receipt
 app.post("/verify-receipt", async (req, res) => {
   const receiptData = req.body["receipt-data"];
   if (!receiptData) {
@@ -46,41 +49,36 @@ app.post("/verify-receipt", async (req, res) => {
   console.log("📥 Receipt data alındı");
 
   try {
-    // İlk deneme: Production endpoint
+    // Öncelikle sandbox veya production makbuzunu kontrol eden döngü
     let data = await validateReceipt(APPLE_PRODUCTION_URL, receiptData);
     console.log("📦 Production yanıt:", data);
 
-    // Eğer makbuz sandbox ise 21007 → sandbox endpoint’e yönlendir
     if (data.status === 21007) {
+      // Sandbox makbuzu production endpoint'e gönderildi → sandbox endpoint’e yönlendir
       console.log("🔄 Sandbox makbuzu, sandbox endpoint’e yönlendiriliyor");
       data = await validateReceipt(APPLE_SANDBOX_URL, receiptData);
       console.log("📦 Sandbox yanıt:", data);
-    }
-
-    // Eğer makbuz production ortamına ait ama yanlışsa 21008 → production tekrar dene
-    else if (data.status === 21008) {
+    } else if (data.status === 21008) {
+      // Production makbuzu sandbox endpoint’e gönderildi → production endpoint’e yönlendir
       console.log("🔄 Production makbuzu, production endpoint’te tekrar deneniyor");
       data = await validateReceipt(APPLE_PRODUCTION_URL, receiptData);
       console.log("📦 Production tekrar yanıt:", data);
     }
 
-    // Status 0 değilse geçersiz makbuz
     if (data.status !== 0) {
       console.error("❌ Geçersiz makbuz:", data.status);
       return res.status(400).json({ isSubscribed: false, raw: data });
     }
 
-    // Abonelik durumu kontrolü
+    // Abonelik kontrolü: En son expiration date
     const latestExpirationDateMs = data?.latest_receipt_info?.reduce((maxDate, item) => {
       const expiresMs = Number(item.expires_date_ms || 0);
       return expiresMs > maxDate ? expiresMs : maxDate;
     }, 0);
 
     const isSubscribed = latestExpirationDateMs ? Date.now() < latestExpirationDateMs : false;
-
     console.log(`✅ Abonelik durumu: ${isSubscribed}`);
 
-    // Nihai yanıt
     res.json({ isSubscribed, raw: data });
 
   } catch (error) {
